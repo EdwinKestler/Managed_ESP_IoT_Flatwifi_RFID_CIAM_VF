@@ -4,7 +4,7 @@
 #include <PubSubClient.h>                                             //https://github.com/knolleary/pubsubclient/releases/tag/v2.3
 #include <ArduinoJson.h>                                              //https://github.com/bblanchon/ArduinoJson/releases/tag/v5.0.7
 //----------------------------------------------------------------------librerias de TIEMPO NTP
-#include <TimeLib.h>                                                  //TimeTracking
+#include <TimeLibEsp.h>                                                  //TimeTracking
 #include <WiFiUdp.h>                                                  //UDP packet handling for NTP request
 //----------------------------------------------------------------------Librerias de manejo de setup de redes 
 #include <ESP8266WebServer.h>                                         //Libreira de html para ESP8266
@@ -17,35 +17,34 @@
 extern "C" {
   #include "user_interface.h"
 }
-
 //----------------------------------------------------------------------Poner el Pin de ADC en modo de sensar el voltaje da la bateria
 int AnalogVCCPin = A0;                                              //Se opne el pin A0 en modo de Lectura interna 1.8V
 float VBat = 0;
 boolean BatWarningSent = false;
 boolean flashWarning = false;
-String FirmwareVersion= "V1.04";                                        //read in chage history
 //----------------------------------------------------------------------Variables de verificacion de fallas de capa de conexion con servicio
 int failed, sent, published;                                          //Variables de conteo de envios 
 int BeepBatteryWarning = 0;
 int BeepSignalWarning =0;
 //----------------------------------------------------------------------Los Pines para la conexion del modulo de RFID TTL son (14,12); //Rx, TX Arduino --> Tx, Rx En RDM6300
 
-SoftwareSerial swSer(4, 2, false, 256);                               //Rx, TX Arduino --> Tx, Rx En RDM6300
+SoftwareSerial swSer(D1, D3, false, 256);                               //Rx, TX Arduino --> Tx, Rx En RDM6300
  unsigned long RetardoLectura;
  long LecturaTreshold = 5000;
 
 //----------------------------------------------------------------------Inicio de cliente UDP
-WiFiUDP Udp;                                                          //Cliente UDP para WIFI
+WiFiUDP udp;                                                          //Cliente UDP para WIFI
 //----------------------------------------------------------------------Codigo para estblecer el protocolo de tiempo en red NTP
 const int NTP_PACKET_SIZE = 48;                                       //NTP time is in the first 48 bytes of message
 byte packetBuffer[NTP_PACKET_SIZE];                                   //Buffer to hold incoming & outgoing packets
 boolean NTP = false;                                                  //Bandera que establece el estado inicial del valor de NTP
 //----------------------------------------------------------------------Variables del servicio de envio de datos MQTT
-char server[] = "10.130.15.245";                                      //EL ORG es la organizacion configurada para el servicio de Bluemix "10.130.14.240"
 const char* cserver = "";
 //char authMethod[] = "use-token-auth";                                 //Tipo de Autenticacion para el servicio de Bluemix (la calve es unica por cada nodo)
 //char token[] = TOKEN;                                                 //Variable donde se almacena el Token provisto por el servicio (ver Settings.h)
 char clientId[] = "d:" ORG ":" DEVICE_TYPE ":" DEVICE_ID;             //Variable de Identificacion de Cliente para servicio de MQTT Bluemix 
+String  Smacaddrs = "00:00:00:00:00:00";
+String  Sipaddrs  = "000.000.000.000";
 //----------------------------------------------------------------------Declaracion de Variables Globales (procuar que sean las minimas requeridas.)
 int DeviceState = 0;
 unsigned long lastUPDATEMillis;                                       //Variable para llevar conteo del tiempo desde la ultima publicacion 
@@ -54,11 +53,12 @@ unsigned long lastNResetMillis;                                       //Variable
 String ISO8601;                                                       //Variable para almacenar la marca del timepo (timestamp) de acuerdo al formtao ISO8601
 int hora = 0;
 //----------------------------------------------------------------------definir Parametros de Lector de RFID
-char readVal = 0;                                                     // individual character read from serial
+byte readVal = 0;                                                     // individual character read from serial
 int counter = -1;                                                     // counter to keep position in the buffer
 char tagId[12];                                                       // final tag ID converted to a string
 String OldTagRead = "000000000000";                                                    //VAriable para guardar la ultima tag leida y evitar lecturas consecutivas
 unsigned int readData[12];                                            //Variable para el alamcenamiento de la lectura del TAG (12 DIGITOS)
+String inputString;
 //----------------------------------------------------------------------Variables Para casignacion de pines para la bocina
 const int beep = 14;
 //----------------------------------------------------------------------Variables Para casignacion de pines para los led RGB
@@ -67,7 +67,7 @@ const int rojo = 15;                                                  //Asignaci
 const int verde = 13;                                                 //Asignacion de GPIO 13 o D7 Para el color Verde del LeD RGB
 const int azul = 12;                                                  //Asignacion de GPIO 15 o D8 Para el color Azul del LeD RGB
 //----------------------------------------------------------------------Variables Para el boton de emergencia
-const int BotonCiam = 5;                                              // asignacion de GPIO 14 o D5  en el WEMO para interfaz de boton 
+const int BotonCiam = D2;                                              // asignacion de GPIO 14 o D5  en el WEMO para interfaz de boton 
 volatile int EstadoBoton= LOW;                                             // Lectura actual del pin de ingreso del boton (input)
 volatile int UltimoEstadoBoton = LOW;                                   // Ultima lectura del pin de ingreso del boton
 volatile int lecturaBoton;
@@ -281,7 +281,7 @@ void handleResponse (byte* payloadrsp) {
 
 //----------------------------------------------------------------------Funcion de vigilancia sobre mensajeria remota desde el servicion de IBM bluemix
 void callback(char* topic, byte* payload, unsigned int payloadLength){//Esta Funcion vigila los mensajes que se reciben por medio de los Topicos de respuesta;
-  Serial.print(F("callback invoked for topic: "));                    //Imprimir un mensaje señalando sobre que topico se recibio un mensaje
+  Serial.print(F("callback invoked for topic: "));                    //Imprimir un mensaje seÃ±alando sobre que topico se recibio un mensaje
   Serial.println(topic);                                              //Imprimir el Topico
   
   if (strcmp (responseTopic, topic) == 0) {                            //verificar si el topico conicide con el Topico responseTopic[] definido en el archivo settings.h local
@@ -300,19 +300,26 @@ void callback(char* topic, byte* payload, unsigned int payloadLength){//Esta Fun
 }
 //----------------------------------------------------------------------definicion de Cliente WIFI para ESP8266 y cliente de publicacion y subcripcion
 WiFiClient wifiClient;                                                //Se establece el Cliente Wifi
-PubSubClient client(server, 1883, callback, wifiClient);              //se establece el Cliente para el servicio MQTT
+PubSubClient client(MQTTServer, 1883, callback, wifiClient);              //se establece el Cliente para el servicio MQTT
 //----------------------------------------------------------------------Funcion de Conexion a Servicio de MQTT
 void mqttConnect() {
   if (!!!client.connected()) {                                         //Verificar si el cliente se encunetra conectado al servicio
   Serial.print(F("Reconnecting MQTT client to: "));                    //Si no se encuentra conectado imprimir un mensake de error y de reconexion al servicio
-  Serial.println(server);                                             //Imprimir la direccion del servidor a donde se esta intentado conectar 
+  Serial.println(MQTTServer);                                             //Imprimir la direccion del servidor a donde se esta intentado conectar 
   char charBuf[30];
   String CID (clientId + NodeID); 
   CID.toCharArray(charBuf, 30);  
-  while (!!!client.connect(charBuf,"flatboxadmin","FBx_admin2012")) {                                //Si no se encuentra conectado al servicio intentar la conexion con las credenciales Clientid, Metodo de autenticacion y el Tokeno password
+  #if defined (internetS)
+    while (!!!client.connect(charBuf, "flatboxadmin", "FBx_admin2012")) {                                //Si no se encuentra conectado al servicio intentar la conexion con las credenciales Clientid, Metodo de autenticacion y el Tokeno password
     Serial.print(F("."));                                             //imprimir una serie de puntos mientras se da la conexion al servicio
     flashWhite();
-  }
+    }  
+  #else
+    while (!!!client.connect(charBuf)) {                                //Si no se encuentra conectado al servicio intentar la conexion con las credenciales Clientid, Metodo de autenticacion y el Tokeno password
+    Serial.print(F("."));                                             //imprimir una serie de puntos mientras se da la conexion al servicio
+    flashWhite();
+    }  
+  #endif  
   Serial.println();                                                   //dejar un espacio en la terminal para diferenciar los mensajes.
  }
 }
@@ -328,9 +335,16 @@ void reconnect() {
     char charBuf[30];
     String CID (clientId + NodeID);
     CID.toCharArray(charBuf, 30);  
-    if (client.connect(charBuf,"flatboxadmin","FBx_admin2012")) {
+     #if defined (internetS)
+     if (client.connect(charBuf, "flatboxadmin", "FBx_admin2012")) {
       Serial.println(F("connected"));
-      } else {
+     }
+     #else
+     if (client.connect(charBuf)) {
+      Serial.println(F("connected"));
+     }
+     #endif
+     else {
       flashPurple();
       BEEP();
       Serial.print(F("failed, rc="));
@@ -384,8 +398,9 @@ void initManagedDevice() {
   supports["deviceActions"] = true;  
   JsonObject& deviceInfo = d.createNestedObject("deviceInfo");
   deviceInfo["ntpServerName"] = ntpServerName;
-  deviceInfo["server"] = server;
-    
+  deviceInfo["server"] = MQTTServer;
+  deviceInfo["MacAddress"] = Smacaddrs;
+  deviceInfo["IPAddress"]= Sipaddrs;    
   char buff[500];
   root.printTo(buff, sizeof(buff));
   Serial.println(F("publishing device manageTopic metadata:"));
@@ -416,25 +431,25 @@ void sendNTPpacket(IPAddress &address)
   packetBuffer[15]  = 52;
   // all NTP fields have been given values, now
   // you can send a packet requesting a timestamp:                 
-  Udp.beginPacket(address, 123); //NTP requests are to port 123
-  Udp.write(packetBuffer, NTP_PACKET_SIZE);
-  Udp.endPacket();
+  udp.beginPacket(address, 123); //NTP requests are to port 123
+  udp.write(packetBuffer, NTP_PACKET_SIZE);
+  udp.endPacket();
 }
 
 
 //----------------------------------------------------------------------Funcion para obtener el paquee de TP y procesasr la fecha hora desde el servidor de NTP
 time_t getNtpTime()
 {
-  while (Udp.parsePacket() > 0) ; // discard any previously received packets
+  while (udp.parsePacket() > 0) ; // discard any previously received packets
   Serial.println(F("Transmit NTP Request"));
   sendNTPpacket(timeServer);
   uint32_t beginWait = millis();
   while (millis() - beginWait < 1500) {
-    int size = Udp.parsePacket();
+    int size = udp.parsePacket();
     if (size >= NTP_PACKET_SIZE) {
       Serial.println(F("Receive NTP Response"));
       NTP = true;
-      Udp.read(packetBuffer, NTP_PACKET_SIZE);  // read packet into the buffer
+      udp.read(packetBuffer, NTP_PACKET_SIZE);  // read packet into the buffer
       unsigned long secsSince1900;
       // convert four bytes starting at location 40 to a long integer
       secsSince1900 =  (unsigned long)packetBuffer[40] << 24;
@@ -448,16 +463,6 @@ time_t getNtpTime()
   return 0; // return 0 if unable to get the time
 }
 
-//----------------------------------------------------------------------Fucnion para la apertura y conexion de paquetes de UDP para el servicio de  NTP
-void udpConnect() {
-  Serial.println(F("Starting UDP"));
-  Udp.begin(localPort);
-  Serial.print(F("Local port: "));
-  Serial.println(Udp.localPort());
-  Serial.println(F("waiting for sync"));
-   setSyncProvider(getNtpTime);
-}
-
 //----------------------------------------------------------------------anager function. Configure the wifi connection if not connect put in mode AP--------//
 void wifimanager() {
   WiFiManager wifiManager;
@@ -465,11 +470,23 @@ void wifimanager() {
   Purple();
   if (!  wifiManager.autoConnect("flatwifi")) {
     flashPurple();
-    if (!wifiManager.startConfigPortal("FlatWifi")) {
+    if (!wifiManager.startConfigPortal("flatwifi")) {
       //reset and try again, or maybe put it to deep sleep
       ESP.reset();
       delay(5000);
     }
+  }
+}
+
+//----------------------------------------------------------------------anager function. Configure the wifi connection if not connect put in mode AP--------//
+void OnDemandWifimanager() {
+  WiFiManager wifiManager;
+  Serial.println(F("Empezando Configuracion de WIFI Bajo Demanda"));
+  Purple();
+  if (!wifiManager.startConfigPortal("flatwifi")) {
+    //reset and try again, or maybe put it to deep sleep
+    ESP.reset();
+    delay(5000);
   }
 }
 
@@ -487,27 +504,61 @@ void setup() {
   wifi_set_sleep_type(LIGHT_SLEEP_T);
   lightsOff();     
   Serial.begin(115200); //iniciamos el puerto de comunicaiones en pines 0 y 1 para el envio de mensajes de depuracion y error
+  swSer.begin(9600);     //inciamos el puerto serial por software para la lectora RFID (puertos 12 y13) a 9600bps.
+  //inicializacion de script:
   Serial.println(F("")); 
-  Serial.print(F("initializing RFID WIFI READER Setup, CHIPID:"));
+  Serial.println(F("Inicializacion de programa de boton con identificacion RFID;"));
+  Serial.println(F("Parametros de ambiente de funcionamiento:"));
+  Serial.print(F("            CHIPID: "));
   Serial.println(NodeID);
-  swSer.begin(9600);                                                        //inciamos el puerto serial por software para la lectora RFID (puertos 12 y13) a 9600bps.
-  Serial.print("Version de firmware:");
+  Serial.print(F("            HARDWARE: "));
+  Serial.println(HardwareVersion);
+  Serial.print(F("            FIRMWARE: "));
   Serial.println(FirmwareVersion);
-  delay(500);
-  
+  Serial.print(F("            Servidor de NTP: "));
+  Serial.println(ntpServerName);
+  Serial.print(F("            Servidor de MQTT: "));
+  Serial.println(MQTTServer);
+  Serial.print(F("            Client ID: "));
+  Serial.println(clientId); 
+  delay(1000); 
+  //-------------------------------------------------------------------------//verificar si el boton esta apoachado para configurar wifi 
+  Serial.print(F("            estado del Boton: "));
+  boolean SETUPBotonCiam = digitalRead(BotonCiam);
+  Serial.println(SETUPBotonCiam);
+  delay (1000);
+  if ( SETUPBotonCiam == HIGH ) {
+    Serial.println(F("Configurando Wifi"));
+    OnDemandWifimanager();
+    delay(1000);
+  }
+  //--------------------------------------------------------------------------Configuracion Automatica de Wifi   
   //--------  Funcion de Conexion a Wifi
   while (WiFi.status() != WL_CONNECTED) {                                   //conectamos al wifi si no hay la rutina iniciara una pagina web de configuracion en la direccion 192.168.4.1 
     wifimanager();
     delay(1000);
   }
-  Serial.print(F("nWiFi connected, IP address: "));
+  Serial.print(F("Wifi conectado, Direccion de IP Asignado: "));
   Serial.println(WiFi.localIP());
-  Serial.println();                                                         //dejamos una linea en blanco en la terminal 
-                                                                            //una vez contados al Wifi nos aseguramos tener la hora correcta simepre
-  Serial.println(F("Connected to WiFi, Sync NTP time"));                    //mensaje de depuracion para saber que se intentara obtner la hora
+  Sipaddrs = WiFi.localIP().toString();
+  Serial.print(F("Direccion de MAC Asignado: "));
+  Serial.println(WiFi.macAddress());
+  Smacaddrs = String(WiFi.macAddress());
+  Serial.println(F(""));                                                         //dejamos una linea en blanco en la terminal 
+  //una vez contados al Wifi nos aseguramos tener la hora correcta simepre
+  Serial.println(F("Connected to WiFi, sincronizando con el NTP;"));                    //mensaje de depuracion para saber que se intentara obtner la hora
+  //--------------------------------------------------------------------------Configuracion de NTP
+  Serial.print(F("servidor de NTP:"));
+  Serial.println(ntpServerName);
+  //--------------------------------------------------------------------------Configuracion de UDP
+  Serial.println("Starting UDP");
+  udp.begin(localPort);
+  Serial.print("Local port: ");
+  Serial.println(udp.localPort());
+  
   while (NTP == false) {
-    udpConnect ();                                                          //iniciamos la mensajeria de UDP para consultar la hora en el servicio de NTP remoto (el servidor se configura en 
-    delay(500);
+    setSyncProvider(getNtpTime);                                                          //iniciamos la mensajeria de UDP para consultar la hora en el servicio de NTP remoto (el servidor se configura en 
+    delay(1000);
   }
   Serial.println(F("Time Sync, Connecting to mqtt sevrer"));
   mqttConnect();                                                            //Conectamos al servicio de Mqtt con las credenciales provistas en el archivo "settings.h"
@@ -610,6 +661,7 @@ boolean publishRF_ID_Lectura(String IDModulo, String Tstamp, String tagread) {
       BEEP();
       EstadoBoton = 0;
       published ++;
+      inputString = "";
       failed = 0; 
       }else {
         Serial.println(F("enviado data de RFID: FAILED"));
@@ -617,6 +669,7 @@ boolean publishRF_ID_Lectura(String IDModulo, String Tstamp, String tagread) {
         EstadoBoton = 1;
         failed ++;
         OldTagRead = "000000000000";
+        inputString = "";
       }
   }else{
     Serial.println("Este es una lectura consecutiva");
@@ -624,8 +677,8 @@ boolean publishRF_ID_Lectura(String IDModulo, String Tstamp, String tagread) {
 }
 
 //-------- Data de Manejo RF_ID_Manejo. Publish the data to MQTT server, the payload should not be bigger than 45 characters name field and data field counts. --------//
-void publishRF_ID_Manejo (String IDModulo,String MSG,float vValue,int RSSIV, int env, int fail,String Tstamp){
-  StaticJsonBuffer<250> jsonBuffer;
+void publishRF_ID_Manejo (String IDModulo,String MSG,float vValue,int RSSIV, int env, int fail,String Tstamp, String SMacAd, String SIpAd){
+  StaticJsonBuffer<300> jsonBuffer;
   JsonObject& root = jsonBuffer.createObject();
   JsonObject& d = root.createNestedObject("d");
   JsonObject& Ddata = d.createNestedObject("Ddata");
@@ -637,7 +690,9 @@ void publishRF_ID_Manejo (String IDModulo,String MSG,float vValue,int RSSIV, int
   Ddata["enviados"] = sent;
   Ddata["fallidos"] = fail;
   Ddata["Tstamp"] = Tstamp;
-  char MqttDevicedata[250];
+  Ddata["Mac"] = SMacAd;
+  Ddata["Ip"] = SIpAd;
+  char MqttDevicedata[300];
   root.printTo(MqttDevicedata, sizeof(MqttDevicedata));
   Serial.println(F("publishing device data to manageTopic:"));
   Serial.println(MqttDevicedata);
@@ -690,7 +745,7 @@ void ParseTag(){
           // process the tag we just read
           parseTag();
           checkTime();          
-          publishRF_ID_Lectura(NodeID,ISO8601,tagId);
+          publishRF_ID_Lectura(NodeID,ISO8601,inputString);
             // clear serial to prevent multiple reads
           clearSerial();
            // reset reading state
@@ -699,6 +754,9 @@ void ParseTag(){
         default: 
           // save value
           readData[counter] = readVal;
+          if (counter > 3 && counter <8){
+          inputString += readVal;
+           }
           // increment counter
           ++counter;
           break;      
@@ -730,7 +788,8 @@ void botonCIAM(){
 
 float Bateria(){
  int sensorValue = analogRead(AnalogVCCPin);
- float volt = sensorValue;
+ //float volt = sensorValue;
+ float volt = 821.14;
  volt = volt / 221.93;
  return volt;
 }
@@ -776,7 +835,7 @@ void NormalReset(){
       Serial.println(Msg);
       float VBat = Bateria();
       checkTime();  
-      publishRF_ID_Manejo(NodeID, msg, VBat, WifiSignal, published, failed, ISO8601);        //publishRF_ID_Manejo (String IDModulo,String MSG,float vValue, int fail,String Tstamp)
+      publishRF_ID_Manejo(NodeID, msg, VBat, WifiSignal, published, failed, ISO8601, Smacaddrs, Sipaddrs);        //publishRF_ID_Manejo (String IDModulo,String MSG,float vValue, int fail,String Tstamp)
       void disconnect ();
       hora = 0;
       ESP.restart();
@@ -825,7 +884,7 @@ void LocalWarning (){
       float VBat = Bateria();
       int WifiSignal = WiFi.RSSI();
       checkTime();    
-      publishRF_ID_Manejo(NodeID,msg, VBat, WifiSignal, published, failed, ISO8601);        //publishRF_ID_Manejo (String IDModulo,String MSG,float vValue, int fail,String Tstamp)
+      publishRF_ID_Manejo(NodeID,msg, VBat, WifiSignal, published, failed, ISO8601, Smacaddrs, Sipaddrs);        //publishRF_ID_Manejo (String IDModulo,String MSG,float vValue, int fail,String Tstamp)
       if (WiFi.RSSI() < -75){
         msg = ("LOWiFi");
         flashRed();
@@ -834,14 +893,14 @@ void LocalWarning (){
         Serial.print(WiFi.SSID());
         Serial.print(" ");
         Serial.println(WiFi.RSSI());
-        publishRF_ID_Manejo(NodeID, msg, VBat, WifiSignal, published, failed, ISO8601);        //publishRF_ID_Manejo (String IDModulo,String MSG,float vValue, int fail,String Tstamp)
+        publishRF_ID_Manejo(NodeID, msg, VBat, WifiSignal, published, failed, ISO8601, Smacaddrs, Sipaddrs);        //publishRF_ID_Manejo (String IDModulo,String MSG,float vValue, int fail,String Tstamp)
       }
       if (Bateria() < BATTRESHHOLD ){
         flashWarning = true;
         BEEP();
         msg = ("LowBat");
         if (BatWarningSent == false){
-          publishRF_ID_Manejo(NodeID, msg, VBat, WifiSignal, published, failed, ISO8601);
+          publishRF_ID_Manejo(NodeID, msg, VBat, WifiSignal, published, failed, ISO8601, Smacaddrs, Sipaddrs);
           BatWarningSent = true;  
         }
       }
@@ -851,3 +910,4 @@ void LocalWarning (){
       }
     }
   }
+

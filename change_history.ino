@@ -61,7 +61,7 @@
 
             *   data["enviados"] = sent;
 
- * added: se añadio el contador de envios para todas las funciones de envio de datos.
+ * added: se aÃ±adio el contador de envios para todas las funciones de envio de datos.
            *root.printTo(buff, sizeof(buff));
             Serial.println(F("publishing device manageTopic metadata:"));
             Serial.println(buff);
@@ -236,7 +236,7 @@
 * * * editor:Edwin Kestler
  * Changed: String FirmwareVersion= "V0.07";          
  * date:19/01/2017
- * Changed: sse agrego la rutina de light sleep ´mopdem sleep para ahorrar bateria:
+ * Changed: sse agrego la rutina de light sleep Â´mopdem sleep para ahorrar bateria:
                                            * extern "C" {
                             #include "user_interface.h"
                           }
@@ -470,5 +470,199 @@
               while (!!!client.connect(clientId)) {
  *       
  * * Compile: OK , TEST: OK 
-           */
+ *  * Compile: OK , TEST: OK 
+ *  
+ * ** *Changed: String FirmwareVersion= "V1.05";          
+ *  * date:26/12/2017
+ * Changed: Se agrego la variable para ver la mac adress del ESP junto con la IP para poder configurar los accesos en los clientes con proteccion por MAC 
+ * se cambio en la funcion de SETUP d:
+                             * 
+                             * /--------------------------------------------------------------------------SETUP!!!------------------------------------------------------------------------------
+                                                                                                        //-------- Funcion Principal de inicializacion de rutina en modulo 
+                            void setup() {
+                              pinMode(rojo, OUTPUT);
+                              pinMode(verde, OUTPUT);
+                              pinMode(azul, OUTPUT);
+                              pinMode(beep, OUTPUT);
+                              pinMode(BotonCiam, INPUT);
+                              digitalWrite(beep, LOW);
+                              //wifi_set_sleep_type(NONE_SLEEP_T);
+                              wifi_set_sleep_type(MODEM_SLEEP_T);
+                              wifi_set_sleep_type(LIGHT_SLEEP_T);
+                              lightsOff();     
+                              Serial.begin(115200); //iniciamos el puerto de comunicaiones en pines 0 y 1 para el envio de mensajes de depuracion y error
+                              Serial.println(F("")); 
+                              Serial.print(F("initializing RFID WIFI READER Setup, CHIPID:"));
+                              Serial.println(NodeID);
+                              swSer.begin(9600);                                                        //inciamos el puerto serial por software para la lectora RFID (puertos 12 y13) a 9600bps.
+                              Serial.print("Version de firmware:");
+                              Serial.println(FirmwareVersion);
+                              delay(500);
+                              
+                              //--------  Funcion de Conexion a Wifi
+                              while (WiFi.status() != WL_CONNECTED) {                                   //conectamos al wifi si no hay la rutina iniciara una pagina web de configuracion en la direccion 192.168.4.1 
+                                wifimanager();
+                                delay(1000);
+                              }
+                              Serial.print(F("nWiFi connected, IP address: "));
+                              Serial.println(WiFi.localIP());
+                              Serial.println();                                          
+                             * 
+ * a: 
+                             * 
+                             * /--------------------------------------------------------------------------SETUP!!!------------------------------------------------------------------------------
+                                                                                                        //-------- Funcion Principal de inicializacion de rutina en modulo 
+                            void setup() {
+                              pinMode(rojo, OUTPUT);
+                              pinMode(verde, OUTPUT);
+                              pinMode(azul, OUTPUT);
+                              pinMode(beep, OUTPUT);
+                              pinMode(BotonCiam, INPUT);
+                              digitalWrite(beep, LOW);
+                              //wifi_set_sleep_type(NONE_SLEEP_T);
+                              wifi_set_sleep_type(MODEM_SLEEP_T);
+                              wifi_set_sleep_type(LIGHT_SLEEP_T);
+                              lightsOff();     
+                              Serial.begin(115200); //iniciamos el puerto de comunicaiones en pines 0 y 1 para el envio de mensajes de depuracion y error
+                              Serial.println(F("")); 
+                              Serial.print(F("initializing RFID WIFI READER Setup, CHIPID:"));
+                              Serial.println(NodeID);
+                              swSer.begin(9600);                                                        //inciamos el puerto serial por software para la lectora RFID (puertos 12 y13) a 9600bps.
+                              Serial.print("Version de firmware:");
+                              Serial.println(FirmwareVersion);
+                              delay(500);
+                              
+                              //--------  Funcion de Conexion a Wifi
+                              while (WiFi.status() != WL_CONNECTED) {                                   //conectamos al wifi si no hay la rutina iniciara una pagina web de configuracion en la direccion 192.168.4.1 
+                                wifimanager();
+                                delay(1000);
+                              }
+                              Serial.print(F("nWiFi connected, IP address: "));
+                              Serial.println(WiFi.localIP());
+                              Serial.println(WiFi.macAddress());
+                              Serial.println();                                          
+ * * Compile: OK , TEST: OK             
+ * 
+ * 
+ * * ** *Changed: String FirmwareVersion= "V1.06";          
+ *  * date:26/12/2017
+ * Changed: Se agrego la variable de la mac adress del ESP junto con la IP para enviarla con los mensajes de configuracion y con los de eventos.  
+ * 
+ * se agragaron las variables:
+ * 
+ * String  Smacaddrs = "00:00:00:00:00:00";
+ * String  Sipaddrs  = "000.000.000.000";
+ * se cambio en la funcion de SETUP d:
+                              Serial.print(F("nWiFi connected, IP address: "));
+                              Serial.println(WiFi.localIP());
+                              Serial.println(WiFi.macAddress());
+                              Serial.println();                                                         //dejamos una linea en blanco en la terminal 
+ * a: 
+                             * 
+                              Serial.print(F("nWiFi connected, IP address: "));
+                              Serial.println(WiFi.localIP());
+                              Sipaddrs = WiFi.localIP().toString();
+                              Serial.println(WiFi.macAddress());
+                              Smacaddrs = String(WiFi.macAddress());
+                              Serial.println();                                                         //dejamos una linea en blanco en la terminal 
+ * * Compile: OK , TEST: OK             
+ * 
+ *  * * ** *Changed: String FirmwareVersion= "V1.07";          
+ *  * date:21/03/2018
+ * Changed: Se  agrego la variable #ifdef para definir ambiete de prueba y el ambiente de produccion ebn Settings:  
+ * 
+ * //-------- Customise the above values --------
+ * //#define internetS "eospower.flatbox.io"
+ * #define Cayala "10.130.19.250"
+ * //#define MiraFlores "eospower.flatbox.io"
+ * //#define Zona9 "eospower.flatbox.io"
+ * //#define Zona18 "eospower.flatbox.io"
+ * //-----------Variables de Configuracion del Servicio de NTP
+ * //-------- Configuracion de parametros de servicio remots de hora (NTP Servers:)
+ * #if defined (internetS)
+ *        IPAddress timeServer(129,  6, 15, 28); // time.nist.gov NTP ;
+ *        const char* ntpServerName = "129.6.15.28"; //const char*;
+ *        unsigned int localPort = 2390;  // local port to listen for UDP packets
+ *        const int timeZone = -6;  // Eastern central Time (USA)
+ *        #else
+ *        IPAddress timeServer(172, 20,  1,235); // time.nist.gov NTP server IPAddress timeServer(192,168,120,211);
+ *        const char* ntpServerName = "172.20.1.235"; //const char* ntpServerName = "192.168.120.211";
+ *        unsigned int localPort = 2390;  // local port to listen for UDP packets
+ *        const int timeZone = -6;  // Eastern central Time (USA)
+ *        #endif
+ *        
+ * * Compile: OK , TEST: OK  
+ *  *  * * ** *Changed: String FirmwareVersion= "V1.08";          
+ *  * date:2/04/2018
+ * Changed: Se  agrego la variable de Hardware version y se agrego la rutina de impresion de parametros al inicio para el ninicio del Setup para informar sobre las cariabvles de configuracion:  
+ * 
+                   * Serial.begin(115200); //iniciamos el puerto de comunicaiones en pines 0 y 1 para el envio de mensajes de depuracion y error
+                    swSer.begin(9600);                                                        //inciamos el puerto serial por software para la lectora RFID (puertos 12 y13) a 9600bps.
+                    //inicializacion de script:
+                    Serial.println(F("")); 
+                    Serial.println(F("Inicializacion de programa de boton con identificacion RFID;"));
+                    Serial.println(F("Parametros de ambiente de funcionamiento:"));
+                    Serial.print(F("          CHIPID: "));
+                    Serial.println(NodeID);
+                    Serial.print("            HARDWARE: ");
+                    Serial.println(HardwareVersion);
+                    Serial.print("            FIRMWARE: ");
+                    Serial.println(FirmwareVersion);
+                    Serial.print("            Servidor de NTP: ");
+                    Serial.println(ntpServerName);
+                    Serial.print("            Servidor de MQTT: ");
+                    Serial.println(server);
+                    Serial.print("           Client ID: ");
+                    Serial.println(clientId); 
+   *              
+   * * Compile: OK , TEST: OK               
+   *  * * Compile: OK , TEST: OK  
+ *  *  * * ** *Changed: String FirmwareVersion= "V1.09";          
+ *  * date:19/04/2018
+ * Changed: Se  agrego la variable de Hardware version y se agrego la rutina de impresion de parametros al inicio para el ninicio del Setup para informar sobre las cariabvles de configuracion:  
+ * 
+                   *se agrgo el variable MQTTServer para definir el NTP y MQTT depoendiendo el centro 
+                   *
+                   *-------- Customise the above values --------
+                   *#define internetS   "eospower.flatbox.io"
+                   *#define Cayala      "10.130.19.250"
+                   *#define MiraFlores  "10.130.14.240"
+                   *#define Fraijanes   "10.130.15.245"
+                   *#define Zona9       "10.130.12.210"
+                   *#define Zona18      "10.130.16.245"
+                   *-------- Customise these values-----------
+                   *char MQTTServer [] = internetS;
+                   *   *              
+   * * Compile: OK , TEST: OK            
+   * *  *  * * ** *Changed: String FirmwareVersion= "V1.10";          
+ *  * date:19/04/2018
+ * Changed: se agrego la configuracion de wifi bajo demanda por medio de botonaso.
+ * se agrego en SETUP:
+ *                    //-------------------------------------------------------------------------//verificar si el boton esta apoachado para configurar wifi 
+ *                    Serial.print(F("            estado del Boton: "));
+ *                    boolean SETUPBotonCiam = digitalRead(BotonCiam);
+ *                    Serial.println(SETUPBotonCiam);
+ *                    delay (1000);
+ *                    if ( SETUPBotonCiam == HIGH ) {
+ *                        Serial.println(F("Configurando Wifi"));
+ *                        OnDemandWifimanager();
+ *                        delay(1000);
+ *                        }                   
+ * Y luego se agrego la fincion OnDemandWifimanager();                        
+ * 
+ *                    //----------------------------------------------------------------------anager function. Configure the wifi connection if not connect put in mode AP--------//
+ *                    void OnDemandWifimanager() {
+ *                    WiFiManager wifiManager;
+ *                    Serial.println(F("Empezando Configuracion de WIFI Bajo Demanda"));
+ *                    Purple();
+ *                    if (!wifiManager.startConfigPortal("flatwifi")) {
+ *                          //reset and try again, or maybe put it to deep sleep
+ *                          ESP.reset();
+ *                          delay(5000);
+ *                      }
+ *                    }
+ * * Compile: OK , TEST: OK
+  */
            
+           
+
